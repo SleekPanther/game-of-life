@@ -12,10 +12,10 @@ A C# visualization of John Conway's Game of Life
     - check neighbors
 
 ## Rules
-1. At each generation
-    - If cell has **< 2 neighbors**, it dies
-    - If it has **exactly 2 neighbors** it stays alive
-    - If it has **exactly 3 neighbors**, it will be born
+At each generation
+- If cell has **< 2 neighbors**, it dies
+- If it has **exactly 2 neighbors** it stays alive
+- If it has **exactly 3 neighbors**, it will be born
 
 Glider = same pattern, shifted
 
@@ -34,3 +34,6 @@ A WPF Application for visualization and animation
 Benchmark tests for performance analysis
 - GameOfLife.Tests
 An xUnit test project for game logic correctness
+
+## TODO
+- remove history option (not needed for visualizer)
