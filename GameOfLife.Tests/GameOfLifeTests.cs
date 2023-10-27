@@ -1,10 +1,86 @@
+using GameOfLife.Core;
+using Xunit;
+
 namespace GameOfLife.Tests;
 public class GameOfLifeTests {
+	//Don't run printOutput true in these tests since it can lock the file. Or consider generating unique names
+	[Theory]
+	[MemberData(nameof(EmptyBoard_Data))]
+	public void EmptyBoard_Tests(int width, int height, int generations, bool[][][] expected) {
+		var board = Game.CreateEmptyBoard(width, height, generations);
+		AssertBoardsEqual(expected, board);
+	}
+	public static object[][] EmptyBoard_Data = new object[][] {
+		new object[] {
+			5, 4, 3,
+			new bool[][][] {
+				new bool[][] {
+					new bool[] { false, false, false, false, false, },
+					new bool[] { false, false, false, false, false, },
+					new bool[] { false, false, false, false, false, },
+					new bool[] { false, false, false, false, false, },
+				},
+				new bool[][] {
+					new bool[] { false, false, false, false, false, },
+					new bool[] { false, false, false, false, false, },
+					new bool[] { false, false, false, false, false, },
+					new bool[] { false, false, false, false, false, },
+				},
+				new bool[][] {
+					new bool[] { false, false, false, false, false, },
+					new bool[] { false, false, false, false, false, },
+					new bool[] { false, false, false, false, false, },
+					new bool[] { false, false, false, false, false, },
+				},
+			}
+		},
+	};
+	private static void AssertBoardsEqual(bool[][][] board1, bool[][][] board2) {
+		Assert.Equal(board1.Length, board2.Length);
+		for (int i = 0; i < board1.Length; i++) {
+			Assert.Equal(board1[i].Length, board2[i].Length);
+		}
+		for (int i = 0; i < board2.Length; i++) {	//check both in case 1 is larger. The first loop could stop early
+			Assert.Equal(board1[i].Length, board2[i].Length);
+		}
+		for (int i=0; i<board1.Length; i++) {
+			for(int j=0; j<board2.Length; j++) {
+				Assert.Equal(board1[i][j], board2[i][j]);
+			}
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(InBounds_Data))]
+	public void InBounds_Tests(bool[][] board, (int x, int y)[] coords, bool[] expected) {
+		for(int i = 0; i < coords.Length; i++) {
+			Assert.Equal(Game.InBounds(board, coords[i].y, coords[i].x), expected[i]);
+		}
+	}
+	public static object[][] InBounds_Data = new object[][] {
+		new object[] {
+			new bool[][] {
+				new bool[] { false, false, false, false, false, },
+				new bool[] { false, false, false, false, false, },
+				new bool[] { false, false, false, false, false, },
+				new bool[] { false, false, false, false, false, },
+				new bool[] { false, false, false, false, false, },
+				new bool[] { false, false, false, false, false, },
+				new bool[] { false, false, false, false, false, },
+				new bool[] { false, false, false, false, false, },
+				new bool[] { false, false, false, false, false, },
+				new bool[] { false, false, false, false, false, },
+			},
+			new []{ (0, 0), (1, 1), (0, 5), (2, 6), (2, 4), (0, 5), (-1, 1), (-1, 5), (1, -3), },
+			new [] { true, true, false, false, true, false, false, false, false, },
+		},
+	};
+
 	[Theory]
 	[MemberData(nameof(CheckNeighbors_Data))]
 	public async void CheckNeighbors_Tests() {
-		//var game = new GameOfLife.Core.GameOfLife(10, 10, 100, true, true);
-		//await game.Start();
+		//var game = new GameOfLife(10, 10, 100, true, true);
+		//await game.Start().ConfigureAwait(false);
 		//var expectedBoard = new bool[][][] {
 		//	new bool[][]{
 		//		new bool[] { true },
@@ -23,8 +99,8 @@ public class GameOfLifeTests {
 	[Theory]
 	[MemberData(nameof(PrintBoardTrue_Data))]
 	public async void PrintBoardTrue_Tests() {
-		//var game = new GameOfLife.Core.GameOfLife(10, 10, 100, true, true);
-		//await game.Start();
+		//var game = new GameOfLife(10, 10, 100, true, true);
+		//await game.Start().ConfigureAwait(false);
 		//var expectedBoard = new bool[][][] {
 		//	new bool[][]{
 		//		new bool[] { true },

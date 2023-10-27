@@ -1,80 +1,76 @@
 ﻿using System;
+using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace GameOfLife.Core;
-public class GameOfLife {
-	private readonly bool[][][] board;
-	private readonly bool[][][] board2;		//only 2 generations, values copied from 0 to 1 and then 1 to 0 every iteration
-	public bool[][][] Board => board;
-	private readonly bool saveHistory;
+public class Game {
+	private const long MAX_GENERATIONS = 1_000_000;
+
+	private bool[][][]? board;
+	private bool[][][]? board2;		//only 2 generations, values copied from 0 to 1 and then 1 to 0 every iteration
+	private bool saveHistory;
 	private bool SaveHistory => saveHistory;
-	private readonly string[][] history;
-	private readonly long generations;
-	private readonly bool printOutput;
-	private readonly bool newMode;
+	private string[][]? history;
+	public long generations;
+	public long Generations => generations;
+	public bool printOutput;
 	public bool PrintOutput => printOutput;
+	private bool optimizedMode;
+	private long generation;
+	private bool running;
+	public bool Running => running;
 	private bool halts;
 	public bool Halts => halts;
-	private readonly StringBuilder sb = new StringBuilder();
+	private bool loops;
+	public bool Loops => loops;
 
-	private const long MAX_GENERATIONS = 1_000_000;
-	//Assembly.GetExecutingAssembly().FullName[0..Assembly.GetExecutingAssembly().ManifestModule.Name.IndexOf(".dll")]
-	//todo send in folder?
+	private readonly StringBuilder? sb;
 	private string outputFolderPath = $"{Assembly.GetExecutingAssembly().Location[0..(Assembly.GetExecutingAssembly().Location.IndexOf("GameOfLife.ConsoleRunner") + "GameOfLife.ConsoleRunner".Length)]}\\output\\";
 	public void SetOutputFolderName(string name) {
 		outputFolderPath = name;
 	}
-	private string outputFilePath;
-	public void SetOutputFileName(string name) {
+	private string? outputFileName;
+	private string? outputFilePath;
+	public void SetOutputFileNameAndPath(string name) {
+		outputFileName = name;
 		outputFilePath = outputFolderPath + name;
 	}
 
-	public GameOfLife(int width, int height, long generations, string fileName, bool printOutput, bool saveHistory, bool newMode) {
-		//todo how to call other constructor and return something?
-		this.newMode = newMode;
-		if (!newMode) {
+	public Game(int width, int height, int generations, string? fileName, bool printOutput, bool saveHistory, bool optimizedMode) {
+		this.optimizedMode = optimizedMode;
+		if (!optimizedMode) {
 			this.board = CreateEmptyBoard(width, height, generations);
+			this.board2 = null;
 		}
 		else {
 			this.board2 = CreateEmptyBoard(width, height, generations);
+			this.board = null;
 		}
-		//var x = new GameOfLife(width, height, board, generations);	//todo call other constructor, but :GameOfLife didn't worrlk
-		SetOutputFileName(fileName);
-		this.saveHistory = saveHistory;
-		if (saveHistory) {
-			this.history = new string[height][];
-			for (int i = 0; i < history.Length; i++) {
-				history[i] = Enumerable.Repeat(string.Empty, width).ToArray();
-			};
-		}
-		if(generations > MAX_GENERATIONS) {
-			throw new ArgumentException($"{generations} must be less than {MAX_GENERATIONS + 1}", nameof(generations));
-		}
-		this.generations = generations;
-		this.printOutput = printOutput;
+		Initialize(this.board, this.board2, generations, fileName, printOutput, saveHistory, optimizedMode, this.sb);
 	}
-	public GameOfLife(bool[][][]? board, bool[][][]? board2, long generations, string fileName, bool printOutput, bool saveHistory, bool newMode) {
+
+	private void Initialize(bool[][][]? board, bool[][][]? board2, int generations, string? fileName, bool printOutput, bool saveHistory, bool optimizedMode, StringBuilder sb) {
 		this.board = board;
 		this.board2 = board2;
-		SetOutputFileName(fileName);
-		this.newMode = newMode;
+		this.optimizedMode = optimizedMode;
+		this.saveHistory = saveHistory;
 		if (saveHistory) {
-			if (newMode) {
-				this.history = new string[board2![0][0].Length][];
+			if (optimizedMode) {
+				this.history = new string[board2![0].Length][];
 				for (int i = 0; i < history.Length; i++) {
 					history[i] = Enumerable.Repeat(string.Empty, board2![0].Length).ToArray();
 				};
 			}
 			else {
-				this.history = new string[board![0][0].Length][];
+				this.history = new string[board![0].Length][];
 				for (int i = 0; i < history.Length; i++) {
 					history[i] = Enumerable.Repeat(string.Empty, board[0].Length).ToArray();
 				};
 			}
 		}
-		if(generations > MAX_GENERATIONS) {
+		if (generations > MAX_GENERATIONS) {
 			throw new ArgumentException($"{generations} must be less than {MAX_GENERATIONS + 1}", nameof(generations));
 		}
 		if (generations < 0) {
@@ -83,7 +79,10 @@ public class GameOfLife {
 		this.generations = generations;
 		this.printOutput = printOutput;
 		if (printOutput) {
+			sb = new StringBuilder();
 			try {
+				outputFileName = fileName!;
+				SetOutputFileNameAndPath(fileName!);
 				if (File.Exists(outputFilePath)) {
 					File.WriteAllText(outputFilePath, string.Empty);
 				}
@@ -94,15 +93,28 @@ public class GameOfLife {
 			}
 		}
 	}
-	public static bool[][][] CreateEmptyBoard(int width, long height, long generations) {
+
+	public Game(bool[][][]? board, bool[][][]? board2, int generations, string? fileName, bool printOutput, bool saveHistory, bool optimizedMode) {
+		Initialize(board, board2, generations, fileName, printOutput, saveHistory, optimizedMode, this.sb);
+	}
+	public static bool[][][] CreateEmptyBoard(int width, int height, int generations) {
 		var board = new bool[generations][][];
 		for (int i = 0; i < generations; i++) {
-			board[i] = new bool[height -1][];
+			board[i] = new bool[height][];
 			for (int j = 0; j < board[i].Length; j++) {
 				board[i][j] = Enumerable.Repeat(false, width).ToArray();
 			}
 		}
 		return board;
+	}
+
+	public static void InitializeRestOfBoard(bool[][][] board, int generations) {
+		for (int i = 1; i < generations; i++) {		//skip 1st generation
+			board[i] = new bool[board[0].Length][];
+			for (int j = 0; j < board[i].Length; j++) {
+				board[i][j] = Enumerable.Repeat(false, board[0][0].Length).ToArray();
+			}
+		}
 	}
 
 	private static void ClearOutputFile(bool printOutput, string outputFilePath) {
@@ -119,52 +131,69 @@ public class GameOfLife {
 		}
 	}
 
-	public async Task<bool> Start() {
-		ClearOutputFile(printOutput, outputFilePath);
-		if (!newMode) {
-			await PrintBoard(board[0], outputFilePath, printOutput, sb);
-			PrintNeighborCount(board[0], outputFilePath, printOutput, sb);
-			for (long generation = 1; generation < generations; generation++) {
+	public async Task Start() {
+		running = true;
+		ClearOutputFile(PrintOutput, outputFilePath);
+		if (!optimizedMode) {
+			await PrintBoard(board![0], outputFilePath, PrintOutput, sb).ConfigureAwait(false);
+			PrintNeighborCount(board[0], outputFilePath, PrintOutput, sb);
+			for (generation = 1; generation < Generations; generation++) {      //class state variable for generation, not loop variable
 				CopyBoard(board, generation);
 				CheckNeighbors(board, history, generation, this.saveHistory);
 				//todo only do this @ the end
-				await PrintBoard(board[generation], outputFilePath, printOutput, sb);
-				PrintNeighborCount(board[generation], outputFilePath, printOutput, sb);
+				await PrintBoard(board[generation], outputFilePath, PrintOutput, sb).ConfigureAwait(false);
+				PrintNeighborCount(board[generation], outputFilePath, PrintOutput, sb);
 
 				if (AllDead(board)) {
 					this.halts = true;
-					return false;
+					return;
 				}
 				if (AllAlive(board)) {
 					this.halts = true;
-					return false;
+					return;
 				}
 			}
 		}
 		else {
-			await PrintBoard(board2[0], outputFilePath, printOutput, sb);
-			PrintNeighborCount(board2[0], outputFilePath, printOutput, sb);
-			for (long generation = 1; generation < generations; generation++) {
+			await PrintBoard(board2![0], outputFilePath, PrintOutput, sb).ConfigureAwait(false);
+			PrintNeighborCount(board2[0], outputFilePath, PrintOutput, sb);
+			for (generation = 1; generation < Generations; generation++) {      //class state variable for generation, not loop variable
 				CopyBoard2(board2, generation);
 				CheckNeighbors(board2, history, generation, this.saveHistory);
 				//todo only do this @ the end
 				long index = generation %2;
-				await PrintBoard(board2[index], outputFilePath, printOutput, sb);
-				PrintNeighborCount(board2[index], outputFilePath, printOutput, sb);
+				await PrintBoard(board2[index], outputFilePath, PrintOutput, sb).ConfigureAwait(false);
+				PrintNeighborCount(board2[index], outputFilePath, PrintOutput, sb);
 
 				if (AllDead(board2)) {
 					this.halts = true;
-					return false;
+					return;
 				}
 				if (AllAlive(board2)) {
 					this.halts = true;
-					return false;
+					return ;
 				}
 			}
 		}
-		return true;
+		await PrintFinishedMessage().ConfigureAwait(false);
 	}
+	public async Task PrintFinishedMessage() {
+		if (!printOutput) return;
 
+		string message;
+		if (Running) {
+			message = $"Game is still running on generation {generation}";
+			Console.WriteLine(message);
+		}
+		else {
+			message = $"Game finished after {generation} generations which is {(generation < Generations ? "" : "not")} less than its max generations of {Generations}. {(Halts ? "Halts" : "")}{(Loops ? "Loops" : "")}";
+			Console.WriteLine(message);
+			if (Loops) {
+
+			}
+		}
+		await File.WriteAllTextAsync(outputFilePath!, message).ConfigureAwait(false);
+	}
 	public static bool AllDead(bool[][][] board) {
 		for (int i = 0; i < board.Length; i++) {
 			for (int j = 0; j < board[i].Length; j++) {
@@ -190,7 +219,7 @@ public class GameOfLife {
 		return true;
 	}
 
-	private static void CheckNeighbors(bool[][][] board, string[][] history, long generation, bool saveHistory) {
+	private static void CheckNeighbors(bool[][][] board, string[][]? history, long generation, bool saveHistory) {
 		long index = generation % 2;
 		for (int i = 0; i < board[index].Length; i++) {
 			for (int j = 0; j < board[index][0].Length; j++) {
@@ -212,7 +241,7 @@ public class GameOfLife {
 				//else leave alone
 
 				if (saveHistory) {
-					history[i][j] += board[index][i][j] ? 1: 0;
+					history![i][j] += board[index][i][j] ? 1 : 0;
 				}
 			}
 		}
@@ -228,8 +257,8 @@ public class GameOfLife {
 		(1, 1),
 	};
 	public static bool InBounds(bool[][] board, int x, int y) {
-		return x >=0 && x < board.Length
-			&& y >=0 && y < board.Length;
+		return x >= 0 && x < board[0].Length
+			&& y >= 0 && y < board[0].Length;
 	}
 	private static void CopyBoard(bool[][][] board, long generation) {
 		for (int i = 0; i < board[0].Length; i++) {
@@ -265,7 +294,7 @@ public class GameOfLife {
 		}
 		
 		try {
-			await File.AppendAllTextAsync(outputFilePath, sb.ToString());
+			await File.AppendAllTextAsync(outputFilePath, sb.ToString()).ConfigureAwait(false);
 		}
 		catch (Exception ex) {
 			Console.WriteLine($"Error writing to output file to: {outputFilePath}{Environment.NewLine}{ex.Message}{Environment.NewLine}{ex.StackTrace}");
@@ -277,12 +306,12 @@ public class GameOfLife {
 		if (!printOutput) return false;
 
 		sb.Clear();
-		for(int  i = 0; i < board[0].Length; i++) {
+		for(int  i = 0; i < board.Length; i++) {
 			sb.AppendLine(string.Join(" ", board[i].Select(c => c ? 1 : 0)));
 		}
 		sb.AppendLine();
 		try {
-			await File.AppendAllTextAsync(outputFilePath, sb.ToString());
+			await File.AppendAllTextAsync(outputFilePath, sb.ToString()).ConfigureAwait(false);
 		}
 		catch (Exception ex) {
 			Console.WriteLine($"Error writing to output file: {outputFilePath}{Environment.NewLine}{ex.Message}{Environment.NewLine}{ex.StackTrace}");
@@ -294,7 +323,7 @@ public class GameOfLife {
 		if (!printOutput) return;
 
 		sb.Clear();
-		sb.AppendLine("Neighbors");
+		sb.AppendLine("Neighbor Count");
 		for (int i = 0; i < board.Length; i++) {
 			for(int j = 0; j < board[i].Length; j++) {
 				short neighborCount = 0;
@@ -312,7 +341,7 @@ public class GameOfLife {
 		}
 		sb.AppendLine();
 		try {
-			await File.AppendAllTextAsync(outputFilePath, sb.ToString());
+			await File.AppendAllTextAsync(outputFilePath, sb.ToString()).ConfigureAwait(false);
 			var res = string.Join(Environment.NewLine, sb);     //debugging only
 		}
 		catch (Exception ex) {
