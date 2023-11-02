@@ -1,4 +1,5 @@
 ﻿using System;
+using System.ComponentModel;
 using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -6,10 +7,10 @@ using System.Text;
 
 namespace GameOfLife.Core;
 public class Game {
-	private const long MAX_GENERATIONS = 1_000_000;
+	private const int MAX_GENERATIONS = 1_000_000;
 
 	private bool[][][]? board;
-	private bool[][][]? board2;		//only 2 generations, values copied from 0 to 1 and then 1 to 0 every iteration
+	private bool[][][]? board2;		//only 2 generations, values copied from 0 to 1 on odd generations and then 1 to 0 on even generations
 	private bool saveHistory;
 	private bool SaveHistory => saveHistory;
 	private string[][]? history;
@@ -26,7 +27,7 @@ public class Game {
 	private bool loops;
 	public bool Loops => loops;
 
-	private readonly StringBuilder? sb;
+	private StringBuilder? sb;
 	private string outputFolderPath = $"{Assembly.GetExecutingAssembly().Location[0..(Assembly.GetExecutingAssembly().Location.IndexOf("GameOfLife.ConsoleRunner") + "GameOfLife.ConsoleRunner".Length)]}\\output\\";
 	public void SetOutputFolderName(string name) {
 		outputFolderPath = name;
@@ -34,6 +35,8 @@ public class Game {
 	private string? outputFileName;
 	private string? outputFilePath;
 	public void SetOutputFileNameAndPath(string name) {
+		int extensionIndex = name.IndexOf(".txt");
+		name = name.Substring(0, extensionIndex) + "-" + DateTime.Now.Ticks + ".txt";
 		outputFileName = name;
 		outputFilePath = outputFolderPath + name;
 	}
@@ -48,22 +51,24 @@ public class Game {
 			this.board2 = CreateEmptyBoard(width, height, generations);
 			this.board = null;
 		}
-		Initialize(this.board, this.board2, generations, fileName, printOutput, saveHistory, optimizedMode, this.sb);
+		Initialize(this.board, this.board2, generations, fileName, printOutput, saveHistory, optimizedMode);
 	}
 
-	private void Initialize(bool[][][]? board, bool[][][]? board2, int generations, string? fileName, bool printOutput, bool saveHistory, bool optimizedMode, StringBuilder sb) {
+	private void Initialize(bool[][][]? board, bool[][][]? board2, int generations, string? fileName, bool printOutput, bool saveHistory, bool optimizedMode) {
 		this.board = board;
 		this.board2 = board2;
 		this.optimizedMode = optimizedMode;
 		this.saveHistory = saveHistory;
 		if (saveHistory) {
 			if (optimizedMode) {
+				if (!ValidateInitialBoardDimensions(board2!)) throw new InvalidDataException($"{nameof(board2)} is invalid because it doesn't have the same dimensions in all generations.");
 				this.history = new string[board2![0].Length][];
 				for (int i = 0; i < history.Length; i++) {
 					history[i] = Enumerable.Repeat(string.Empty, board2![0].Length).ToArray();
 				};
 			}
 			else {
+				if (!ValidateInitialBoardDimensions(board!)) throw new InvalidDataException($"{nameof(board)} is invalid because it doesn't have the same dimensions in all generations.");
 				this.history = new string[board![0].Length][];
 				for (int i = 0; i < history.Length; i++) {
 					history[i] = Enumerable.Repeat(string.Empty, board[0].Length).ToArray();
@@ -79,23 +84,30 @@ public class Game {
 		this.generations = generations;
 		this.printOutput = printOutput;
 		if (printOutput) {
-			sb = new StringBuilder();
-			try {
-				outputFileName = fileName!;
+			this.sb = new StringBuilder();
 				SetOutputFileNameAndPath(fileName!);
-				if (File.Exists(outputFilePath)) {
-					File.WriteAllText(outputFilePath, string.Empty);
+		}
+	}
+	public static bool ValidateInitialBoardDimensions(bool[][][] board) {
+		if(board == null) throw new ArgumentNullException(nameof(board));
+
+		if (board.Length < 2) return false;
+
+		for (int i = 0; i < board.Length - 1; i++) {
+			for (int j = 0; j < board[0].Length; j++) {
+				if (board[0].Length != board[i + 1].Length)		//check row count
+					return false;
+				for (int k = 0; k < board[0][0].Length - 1; k++) {	//now check all columns
+					if (board[0][0].Length != board[i +1][k].Length)
+						return false;
 				}
 			}
-			catch (Exception ex) {
-				Console.WriteLine($"Error creating output file: {outputFilePath}{Environment.NewLine}{ex.Message}{Environment.NewLine}{Environment.StackTrace}");
-				throw;
-			}
 		}
+		return true;
 	}
 
 	public Game(bool[][][]? board, bool[][][]? board2, int generations, string? fileName, bool printOutput, bool saveHistory, bool optimizedMode) {
-		Initialize(board, board2, generations, fileName, printOutput, saveHistory, optimizedMode, this.sb);
+		Initialize(board, board2, generations, fileName, printOutput, saveHistory, optimizedMode);
 	}
 	public static bool[][][] CreateEmptyBoard(int width, int height, int generations) {
 		var board = new bool[generations][][];
@@ -117,33 +129,15 @@ public class Game {
 		}
 	}
 
-	private static void ClearOutputFile(bool printOutput, string outputFilePath) {
-		if (printOutput) {
-			try {
-				if (File.Exists(outputFilePath)) {
-					File.WriteAllText(outputFilePath, string.Empty);    //clear any existing file
-				}
-			}
-			catch (Exception ex) {
-				Console.WriteLine($"Error clearing output file: {outputFilePath}{Environment.NewLine}{ex.Message}{Environment.NewLine}{Environment.StackTrace}");
-				throw;
-			}
-		}
-	}
-
 	public async Task Start() {
 		running = true;
-		ClearOutputFile(PrintOutput, outputFilePath);
 		if (!optimizedMode) {
-			await PrintBoard(board![0], outputFilePath, PrintOutput, sb).ConfigureAwait(false);
+			PrintBoard(board![0], generation, outputFilePath, PrintOutput, sb);
 			PrintNeighborCount(board[0], outputFilePath, PrintOutput, sb);
 			for (generation = 1; generation < Generations; generation++) {      //class state variable for generation, not loop variable
-				CopyBoard(board, generation);
-				CheckNeighbors(board, history, generation, this.saveHistory);
-				//todo only do this @ the end
-				await PrintBoard(board[generation], outputFilePath, PrintOutput, sb).ConfigureAwait(false);
+				CheckNeighbors(board, history, generation, this.saveHistory, optimizedMode: false);
+				PrintBoard(board[generation], generation, outputFilePath, PrintOutput, sb);
 				PrintNeighborCount(board[generation], outputFilePath, PrintOutput, sb);
-
 				if (AllDead(board)) {
 					this.halts = true;
 					return;
@@ -155,16 +149,14 @@ public class Game {
 			}
 		}
 		else {
-			await PrintBoard(board2![0], outputFilePath, PrintOutput, sb).ConfigureAwait(false);
+			PrintBoard(board2![0], generation, outputFilePath, PrintOutput, sb);
 			PrintNeighborCount(board2[0], outputFilePath, PrintOutput, sb);
 			for (generation = 1; generation < Generations; generation++) {      //class state variable for generation, not loop variable
-				CopyBoard2(board2, generation);
-				CheckNeighbors(board2, history, generation, this.saveHistory);
-				//todo only do this @ the end
-				long index = generation %2;
-				await PrintBoard(board2[index], outputFilePath, PrintOutput, sb).ConfigureAwait(false);
-				PrintNeighborCount(board2[index], outputFilePath, PrintOutput, sb);
-
+				long previousGeneration = Math.Abs(generation % 2 - 1);      //alternates between 0 and 1
+				CopyBoard2(board2, previousGeneration);
+				CheckNeighbors(board2, history, generation, this.saveHistory, this.optimizedMode);
+				PrintBoard(board2[(previousGeneration +1) %2], generation, outputFilePath, PrintOutput, sb);
+				PrintNeighborCount(board2[(previousGeneration + 1) % 2], outputFilePath, PrintOutput, sb);
 				if (AllDead(board2)) {
 					this.halts = true;
 					return;
@@ -175,10 +167,19 @@ public class Game {
 				}
 			}
 		}
-		await PrintFinishedMessage().ConfigureAwait(false);
+		await PrintFinishedMessage();
 	}
+
 	public async Task PrintFinishedMessage() {
 		if (!printOutput) return;
+
+		try {
+			await File.AppendAllTextAsync(outputFilePath!, sb.ToString());
+		}
+		catch (Exception ex) {
+			Console.WriteLine($"Error writing to output file: {outputFilePath}{Environment.NewLine}{ex.Message}{Environment.NewLine}{ex.StackTrace}");
+			Thread.Sleep(5000);    //wait before writing next in case file is bust
+		}
 
 		string message;
 		if (Running) {
@@ -192,7 +193,7 @@ public class Game {
 
 			}
 		}
-		await File.WriteAllTextAsync(outputFilePath!, message).ConfigureAwait(false);
+		await File.AppendAllTextAsync(outputFilePath!, message);
 	}
 	public static bool AllDead(bool[][][] board) {
 		for (int i = 0; i < board.Length; i++) {
@@ -218,35 +219,38 @@ public class Game {
 		}
 		return true;
 	}
-
-	private static void CheckNeighbors(bool[][][] board, string[][]? history, long generation, bool saveHistory) {
-		long index = generation % 2;
-		for (int i = 0; i < board[index].Length; i++) {
-			for (int j = 0; j < board[index][0].Length; j++) {
+	private static void CheckNeighbors(bool[][][] board, string[][]? history, long generation, bool saveHistory, bool optimizedMode) {
+		long previousGeneration = generation -1;
+		if (optimizedMode) {
+			previousGeneration = Math.Abs(generation % 2 - 1);
+			generation = generation % 2;
+		}
+		for (int i = 0; i < board[generation].Length; i++) {
+			for (int j = 0; j < board[generation][0].Length; j++) {
 				short neighborCount = 0;
-				foreach(var (x, y) in neighborDirections.Where(point => !(point.x == i && point.y == j)))   //skip current cell
-					{
-					if (InBounds(board[index], i + x, j + y)
-						&& board[index][i + x][j + y]) {
+				foreach (var (y, x) in neighborDirections) {
+					if (InBounds(board[previousGeneration], i + y, j + x)	//look @ previous generation
+						&& board[previousGeneration][i + y][j + x]) {
 						neighborCount++;
 					}
 				}
 				if (neighborCount < 2) {        //dies
-					board[index][i][j] = false;
+					board[generation][i][j] = false;
+				} else if (neighborCount == 2		//born
+					|| neighborCount == 3) {	//stays alive
+					board[generation][i][j] = true;
+				} else {    //dies of overpopulation
+					board[generation][i][j] = false;
 				}
-				else if (neighborCount == 2		//stays alive
-					|| neighborCount == 3) {	//born
-					board[index][i][j] = true;
-				}
-				//else leave alone
 
 				if (saveHistory) {
-					history![i][j] += board[index][i][j] ? 1 : 0;
+					history![i][j] += board[generation][i][j] ? 1 : 0;
 				}
 			}
 		}
 	}
-	private static readonly (int x, int y)[] neighborDirections = new(int x, int y)[]{
+	//Note y comes first since we access arrays row-wise (not like a mathematical point (x, y))
+	private static readonly (int y, int x)[] neighborDirections = new(int y, int x)[]{
 		(-1, -1),
 		(-1, 0),
 		(-1, 1),
@@ -267,72 +271,53 @@ public class Game {
 			}
 		}
 	}
-	private static void CopyBoard2(bool[][][] board, long generation) {
-		long index = generation % 2;
+
+	private static void CopyBoard2(bool[][][] board, long previousGeneration) {
 		for (int i = 0; i < board[0].Length; i++) {
 			for (int j = 0; j < board[0][0].Length; j++) {
-				if (index == 0) {
-					board[index][i][j] = board[index +1][i][j];
+				if (previousGeneration == 0) {
+					board[previousGeneration +1][i][j] = board[previousGeneration][i][j];	//copy board[0] to board[1]
 				}
 				else {
-					board[index][i][j] = board[index -1][i][j];
+					board[previousGeneration -1][i][j] = board[previousGeneration][i][j]; //copy board[1] to board[0]
 				}
 			}
 		}
 	}
+	private static void PrintBoard(bool[][][] board, string outputFilePath, bool printOutput, StringBuilder sb) {
+		if (!printOutput) return;
 
-	private static async Task<bool> PrintBoard(bool[][][] board, string outputFilePath, bool printOutput, StringBuilder sb) {
-		if (!printOutput) return false;
-
-		sb.Clear();
-		for(int i = 0; i < board.Length; i++) {
+		for (int i = 0; i < board.Length; i++) {
 			for (int j = 0; j < board[i].Length; j++) {
 				for (int k = 0; k < board[i][j].Length; k++) {
 					sb.AppendLine(string.Join(" ", board[i][j].Select(c => c ? 1 : 0)));
 				}
 			}
 		}
-		
-		try {
-			await File.AppendAllTextAsync(outputFilePath, sb.ToString()).ConfigureAwait(false);
-		}
-		catch (Exception ex) {
-			Console.WriteLine($"Error writing to output file to: {outputFilePath}{Environment.NewLine}{ex.Message}{Environment.NewLine}{ex.StackTrace}");
-			return false;
-		}
-		return true;
 	}
-	private async static Task<bool> PrintBoard(bool[][] board, string outputFilePath, bool printOutput, StringBuilder sb) {
-		if (!printOutput) return false;
+	private static void PrintBoard(bool[][] board, long generation, string outputFilePath, bool printOutput, StringBuilder sb) {
+		if (!printOutput) return;
 
-		sb.Clear();
-		for(int  i = 0; i < board.Length; i++) {
+		sb.AppendLine($"Generation {generation}");
+		for (int  i = 0; i < board.Length; i++) {
 			sb.AppendLine(string.Join(" ", board[i].Select(c => c ? 1 : 0)));
 		}
 		sb.AppendLine();
-		try {
-			await File.AppendAllTextAsync(outputFilePath, sb.ToString()).ConfigureAwait(false);
-		}
-		catch (Exception ex) {
-			Console.WriteLine($"Error writing to output file: {outputFilePath}{Environment.NewLine}{ex.Message}{Environment.NewLine}{ex.StackTrace}");
-			return false;
-		}
-		return true;
 	}
-	private async static void PrintNeighborCount(bool[][] board, string outputFilePath, bool printOutput, StringBuilder sb) {
+	private static void PrintNeighborCount(bool[][] board, string outputFilePath, bool printOutput, StringBuilder sb) {
 		if (!printOutput) return;
 
-		sb.Clear();
-		sb.AppendLine("Neighbor Count");
+		sb.AppendLine($"Neighbor Count");
 		for (int i = 0; i < board.Length; i++) {
 			for(int j = 0; j < board[i].Length; j++) {
 				short neighborCount = 0;
-				foreach (var (x, y) in neighborDirections
-					.Where(point => !(point.x == i && point.y == j)))   //skip current cell
-					{
-					if (InBounds(board, i + x, j + y)
-						&& board[i + x][j + y]) {
-						neighborCount++;
+				foreach (var (y, x) in neighborDirections) {
+					//if (InBounds(board, i + x, j + y)
+					//	&& board[i + x][j + y]) {
+					if (InBounds(board, i + y, j + x)) {
+						if (board[i + y][j + x]) {
+							neighborCount++;
+						}
 					}
 				}
 				sb.Append(" " + neighborCount);
@@ -340,13 +325,6 @@ public class Game {
 			sb.AppendLine();
 		}
 		sb.AppendLine();
-		try {
-			await File.AppendAllTextAsync(outputFilePath, sb.ToString()).ConfigureAwait(false);
-			var res = string.Join(Environment.NewLine, sb);     //debugging only
-		}
-		catch (Exception ex) {
-			Console.WriteLine($"Error writing to output file: {outputFilePath}{Environment.NewLine}{ex.Message}{Environment.NewLine}{ex.StackTrace}");
-		}
 	}
 
 }

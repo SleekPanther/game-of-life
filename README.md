@@ -25,6 +25,9 @@ Benchmark tests for performance analysis
 - GameOfLife.Tests
 An xUnit test project for game logic correctness
 
+## References
+- [Modified Game of Life simulator](https://playgameoflife.com/)
+
 ## TODO
 - remove history option (not needed for visualizer)
 - Investigate Span

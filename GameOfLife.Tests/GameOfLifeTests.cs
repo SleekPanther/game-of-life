@@ -51,6 +51,105 @@ public class GameOfLifeTests {
 	}
 
 	[Theory]
+	[MemberData(nameof(ValidateInitialBoards_Data))]
+	public void ValidateInitialBoards_Tests(bool[][][] board, bool expected) {
+		Assert.Equal(Game.ValidateInitialBoardDimensions(board), expected);
+	}
+	public static object[][] ValidateInitialBoards_Data = new object[][] {
+		new object[] {
+			new bool[][][] {
+				new bool[][] {
+					new bool[0],
+				},
+				new bool[][] {
+					new bool[0],
+				},
+			},
+			true,
+		},
+		new object[] {
+			new bool[][][] {
+				new bool[][] {
+					new bool[] { false, false, false, },
+					new bool[] { false, false, false, },
+					new bool[] { false, false, false, },
+					new bool[] { false, false, false, },
+				},
+				new bool[][] {
+					new bool[] { false, false, false, },
+					new bool[] { false, false, false, },
+					new bool[] { false, false, false, },
+					new bool[] { false, false, false, },
+				},
+			},
+			true,
+		},
+		new object[] {
+			new bool[][][] {
+				new bool[][] {
+					new bool[] { false, false, },
+					new bool[] { false, false, },
+					new bool[] { false, false, },
+				},
+				new bool[][] {
+					new bool[] { false, false, },
+					new bool[] { false, false, },
+					new bool[] { false, false, },
+				},
+				new bool[][] {
+					new bool[] { false, },
+					new bool[] { false, false, },
+					new bool[] { false, },
+				},
+			},
+			false,
+		},
+		new object[] {
+			new bool[][][] {
+				new bool[][] {
+					new bool[] { false, false, },
+					new bool[] { false, false, },
+					new bool[] { false, false, },
+				},
+			},
+			false,
+		},
+		new object[] {
+			new bool[][][] {
+				new bool[][] {
+					new bool[] { false, false, },
+					new bool[] { false, false, },
+					new bool[] { false, false, },
+				},
+				new bool[][] {
+					new bool[] { false, false, },
+					new bool[] { false, false, },
+					new bool[] { false, false, },
+					new bool[] { false, false, },
+				},
+			},
+			false,
+		},
+		new object[] {
+			new bool[][][] {
+				new bool[][] {
+					new bool[] { false, false, false, false, false, },
+					new bool[] { false, false, false, false, false, },
+					new bool[] { false, false, false, false, false, },
+					new bool[] { false, false, false, false, false, },
+				},
+				new bool[][] {
+					new bool[] { false, false, false, },
+					new bool[] { false, false, false, false , },
+					new bool[] { false, false, false, false, false, },
+					new bool[] { false, false, false, false, false, },
+				},
+			},
+			false,
+		},
+	};
+
+	[Theory]
 	[MemberData(nameof(InBounds_Data))]
 	public void InBounds_Tests(bool[][] board, (int x, int y)[] coords, bool[] expected) {
 		for(int i = 0; i < coords.Length; i++) {

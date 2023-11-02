@@ -1,4 +1,4 @@
 .vs/
 bin/
 obj/
-boardHistory.txt
+boardHistory*
